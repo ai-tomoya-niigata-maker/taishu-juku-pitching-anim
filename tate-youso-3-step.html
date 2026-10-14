@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,follow">
+<title>投球の縦要素 3D ステップ</title>
+<style>
+:root{--bg:#0a0e1a;--panel:#121a2e;--line:#243050;--gold:#f6c90e;--text:#f8fafc;--sub:#cbd5e1;--mute:#94a3b8}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:980px;margin:0 auto;padding:20px 16px 40px}
+.eyebrow{color:var(--gold);font-size:11px;letter-spacing:.28em;font-weight:700}
+h1{font-size:24px;line-height:1.45;margin:6px 0 8px;font-weight:900}
+.lead{color:var(--sub);font-size:14px;line-height:1.9;margin:0 0 14px}
+.lead b{color:var(--gold)}
+.stage{position:relative;background:#0d1426;border:1px solid var(--line);border-radius:14px;overflow:hidden;aspect-ratio:16/10;touch-action:none}
+.stage canvas{display:block;width:100%;height:100%}
+.tag{position:absolute;transform:translate(-50%,-50%);pointer-events:none;width:26px;height:26px;border-radius:50%;background:rgba(10,14,26,.75);border:2px solid var(--gold);color:var(--gold);font-weight:900;font-size:14px;display:flex;align-items:center;justify-content:center;transition:transform .15s,background .15s}
+.tag.on{background:var(--gold);color:#0a0e1a;transform:translate(-50%,-50%) scale(1.35)}
+.hud{position:absolute;left:10px;top:10px;right:10px;display:flex;justify-content:space-between;gap:8px;pointer-events:none;font-size:12px}
+.hud .mode{background:rgba(10,14,26,.8);border:1px solid var(--line);border-radius:8px;padding:5px 10px;color:var(--sub)}
+.hud .mode b{color:var(--gold)}
+.hint{position:absolute;right:10px;bottom:8px;font-size:11px;color:var(--mute);pointer-events:none}
+.dir{position:absolute;left:10px;bottom:8px;font-size:11px;color:var(--mute);pointer-events:none}
+.legend{margin-top:10px;font-size:12px;color:var(--sub);line-height:1.8}
+.ctrl{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 0;align-items:center}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{background:var(--panel);color:var(--sub);border:0;padding:10px 14px;font:inherit;font-size:14px;cursor:pointer;min-height:44px}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--gold);color:#0a0e1a;font-weight:800}
+.btn{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 16px;font:inherit;font-size:14px;cursor:pointer;min-height:44px}
+.btn.play{min-width:92px;font-weight:800}
+.lab{color:var(--mute);font-size:12px;margin-right:2px}
+input[type=range]{width:100%;accent-color:var(--gold);margin:12px 0 0}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;transition:border-color .15s,background .15s}
+.card.on{border-color:var(--gold);background:#1a2340}
+.card .n{color:var(--gold);font-weight:900;font-size:13px}
+.card .t{font-weight:800;font-size:14px;margin:2px 0 4px}
+.card .d{color:var(--sub);font-size:12px;line-height:1.7}
+.note{margin-top:14px;background:var(--panel);border-left:3px solid var(--gold);border-radius:6px;padding:12px 14px;color:var(--sub);font-size:13px;line-height:1.9}
+.note b{color:var(--text)}
+.fine{margin-top:12px;color:var(--mute);font-size:11px;line-height:1.8}
+@media(max-width:720px){
+  h1{font-size:20px}
+  .stage{aspect-ratio:4/5}
+  .cards{grid-template-columns:1fr 1fr}
+  .seg button{padding:10px 10px;font-size:13px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">TAISHUU-JUKU BCA / 投球の教科書</div>
+  <h1>投球の縦要素［ステップ版］<br>ボールは、下から上へ。</h1>
+  <p class="lead">ボールは、<b>4つの点</b>を順番に通ります。両足をそろえた姿勢から、①から②で一歩踏み出します。まず「ロボット」で1点ずつ止めて位置を確認し、次に「スムーズ」で止まらずに通過する流れを見てください。ドラッグで回転、ホイール（2本指）で拡大・縮小できます。</p>
+
+  <div class="stage" id="stage">
+    <div class="hud"><div class="mode" id="modeLabel"></div><div class="mode" id="phaseLabel"></div></div>
+    <div class="dir">→ 捕手方向</div>
+    <div class="hint">ドラッグ：回転　ホイール／ピンチ：拡大</div>
+  </div>
+
+  <div class="legend"><span style="color:#38bdf8">━</span> 両肩を結んだライン　<span style="color:#fb923c">━</span> 両大腿骨頭を結んだライン　<span style="color:#94a3b8">（点線は延長線）</span></div>
+  <div class="ctrl">
+    <div class="seg" id="modeSeg">
+      <button data-m="robot" class="on">ロボット（1点ずつ止まる）</button>
+      <button data-m="smooth">スムーズ（止まらず通過）</button>
+    </div>
+    <button class="btn play" id="play">一時停止</button>
+    <div class="seg" id="speedSeg"><button data-s="2">×2</button><button data-s="1" class="on">×1</button><button data-s="0.5">×0.5</button><button data-s="0.25">×0.25</button></div>
+  </div>
+  <div class="ctrl">
+    <span class="lab">視点</span>
+    <div class="seg" id="viewSeg">
+      <button data-v="side">投げる腕側</button>
+      <button data-v="front">捕手側</button>
+      <button data-v="back">後ろ</button>
+      <button data-v="top">真上</button>
+      <button data-v="free" class="on">斜め</button>
+    </div>
+  </div>
+  <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="再生位置">
+
+  <div class="cards" id="cards">
+    <div class="card" data-i="0"><div class="n">1</div><div class="t">グラブ</div><div class="d">グラブからボールが出る瞬間。</div></div>
+    <div class="card" data-i="1"><div class="n">2</div><div class="t">ボトム</div><div class="d">内旋・回内で、ボールがいちばん下にくる位置。</div></div>
+    <div class="card" data-i="2"><div class="n">3</div><div class="t">後頭部付近</div><div class="d">外旋・回外で、最大外旋位（MER）になる位置。</div></div>
+    <div class="card" data-i="3"><div class="n">4</div><div class="t">リリース位置</div><div class="d">肘を伸ばした、リリースの位置。</div></div>
+  </div>
+
+  <div class="note">
+    <b>ロボットとスムーズの違い。</b>ロボットは、4つの点で毎回止まります。位置の確認には向いていますが、実際の投球ではボールも腕も止まりません。スムーズは、同じ4つの点を、加速しながら途切れずに通過します。リリース後も動きは止まらず、腕は振り抜かれます。④は、肘を伸ばしたまま、右肩の真上でリリースします。リリース後は、腕を体の反対側（左側）へ弧を描いて振り下ろします。①から②で、一歩踏み出しながら胸郭を90度捻り、②から③で元に戻します。③から④、フォローにかけて、両肩のラインを約20度回旋させます。②から③へは、手を肘より前（捕手側）に通し、肘は後ろに残しています。最終的には、この4つの点をスムーズに通過することが求められます。
+  </div>
+  <p class="fine">※ 動作の理解のためのイメージ図です。実測の動作データではなく、角度・速度・体格は簡略化しています。骨盤は正面向きのまま、足の運びだけを入れています。体幹の回旋も最小限にしています。この図は動作学習のための確認用で、試合では動作を意識せず投げます。</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+'use strict';
+var V3=THREE.Vector3;
+
+/* ---------- キーフレーム（右投手・+z が捕手方向・+x が投手の左） ---------- */
+// P:骨盤位置 hipYaw/yaw:骨盤・胸の回旋(度) lean:前傾(度) hand:S(肩中心)からの右手位置
+// hint:肘の向き lhand:左手(グラブ側) ff/bf:前足・後ろ足
+var KEYS=[
+ {P:[0,.97,0],hipYaw:0,yaw:0,lean:2,hand:[-0.32, -0.2, 0.12],hint:[-0.4, -1, 0],lhand:[-0.26, -0.22, 0.17],ff:[.10,0,0],bf:[-.10,0,0]},
+ {P:[0,.93,.30],hipYaw:0,yaw:-90,lean:4,hand:[-0.2, -0.5, -0.3],hint:[-0.5, -0.2, -1],lhand:[0.12, -0.05, 0.45],ff:[.10,.10,.60],bf:[-.10,0,0]},
+ {P:[0,.93,.30],hipYaw:0,yaw:0,lean:8,hand:[-0.2, 0.33, -0.28],hint:[-1, 0.5, 0],lhand:[0.18, 0.05, 0.5],ff:[.10,0,.60],bf:[-.10,0,0]},
+ {P:[0,.93,.30],hipYaw:0,yaw:10,lean:15,hand:[-.197,.7195,.035],hint:[-1, 0.1, 0.2],lhand:[0.12, -0.22, 0.25],ff:[.10,0,.60],bf:[-.10,0,0]},
+ {P:[0,.93,.30],hipYaw:0,yaw:20,lean:28,hand:[.18,-.55,.25],hint:[-.2,-.4,.5],lhand:[0.1, -0.2, 0.2],ff:[.10,0,.60],bf:[-.10,0,0]}
+];
+var TRUNK=.5, UP=.32, FORE=.40, THIGH=.5, SHIN=.5;
+var D2R=Math.PI/180;
+
+function rotY(v,deg){var c=Math.cos(deg*D2R),s=Math.sin(deg*D2R);return new V3(v.x*c+v.z*s,v.y,-v.x*s+v.z*c);}
+function shoulderCenter(P,lean){return new V3(P[0],P[1]+TRUNK*Math.cos(lean*D2R),P[2]+TRUNK*Math.sin(lean*D2R));}
+
+// 絶対座標のパラメータ配列へ変換
+// [0-2]P [3]hipYaw [4]yaw [5]lean [6-8]右手 [9-11]肘ヒント [12-14]左手 [15-17]前足 [18-20]後ろ足
+var KP=KEYS.map(function(k){
+  var S=shoulderCenter(k.P,k.lean);
+  return [k.P[0],k.P[1],k.P[2],k.hipYaw,k.yaw,k.lean,
+    S.x+k.hand[0],S.y+k.hand[1],S.z+k.hand[2],
+    k.hint[0],k.hint[1],k.hint[2],
+    S.x+k.lhand[0],S.y+k.lhand[1],S.z+k.lhand[2],
+    k.ff[0],k.ff[1],k.ff[2],k.bf[0],k.bf[1],k.bf[2]];
+});
+var NP=KP[0].length;
+// ②→③の通過点：手を肘より前（捕手側）に通す。肘は後ろに残す
+var VIA=(function(){
+  var v=KP[1].map(function(x,i){return (x+KP[2][i])/2;});
+  var S=shoulderCenter([v[0],v[1],v[2]],v[5]);
+  v[6]=S.x-.30;v[7]=S.y+.02;v[8]=S.z+.30;
+  v[9]=-.3;v[10]=.2;v[11]=-1;
+  return v;
+})();
+// リリース後：頭の上から前へ、弧を描いて反対側へ振り下ろす通過点
+var VIA2=(function(){
+  var v=KP[3].map(function(x,i){return (x+KP[4][i])/2;});
+  var S=shoulderCenter([v[0],v[1],v[2]],v[5]);
+  v[6]=S.x-.02;v[7]=S.y+.30;v[8]=S.z+.50;
+  return v;
+})();
+// ①→②の通過点：前足を持ち上げて踏み出す
+var VIA0=(function(){
+  var v=lerpArr(KP[0],KP[1],.5);
+  v[16]=.18;
+  return v;
+})();
+var LOWER=[0,1,2,3,15,16,17,18,19,20];   // 骨盤・足（着地後は動かさない）
+var LAND_T=1.1, LAND_END=1.22;             // 着地：②が終わり③が始まった瞬間に、すばやく床につく
+var SKP=[KP[0],VIA0,KP[1],VIA,KP[2],KP[3],VIA2,KP[4]];
+
+/* ---------- タイムライン ---------- */
+var H=1.0, M=.6;                      // ロボット：停止時間／移動時間
+var ROBOT_T=4*H+3*M;
+var TK=[0,1.1,1.9,2.3,3.1];           // スムーズ：各点を通る時刻（後半ほど速い）
+var STK=[0,.55,1.1,1.5,1.9,2.3,2.65,3.1];
+var SMOOTH_T=TK[4];
+var REL_T=TK[3];                      // リリース時刻
+
+function lerpArr(a,b,u){var r=new Array(NP);for(var i=0;i<NP;i++)r[i]=a[i]+(b[i]-a[i])*u;return r;}
+
+function robotParams(t){
+  var x=t;
+  for(var i=0;i<4;i++){
+    if(x<=H) return {p:KP[i].slice(),phase:i,holding:true};
+    x-=H;
+    if(i===3) break;
+    if(x<=M){var u=x/M;var pp=(i===0)?(u<.5?lerpArr(KP[0],VIA0,u*2):lerpArr(VIA0,KP[1],u*2-1)):(i===1)?(u<.5?lerpArr(KP[1],VIA,u*2):lerpArr(VIA,KP[2],u*2-1)):lerpArr(KP[i],KP[i+1],u);if(i===1){var lk=Math.min(1,u/.15);for(var zz=0;zz<LOWER.length;zz++){var j2=LOWER[zz];pp[j2]=KP[1][j2]+(KP[2][j2]-KP[1][j2])*lk;}}
+      return {p:pp,phase:i+.5,holding:false};}
+    x-=M;
+  }
+  return {p:KP[3].slice(),phase:3,holding:true};
+}
+
+// 非等間隔のカーディナルスプライン（各点を通り、速度は途切れない）
+var TAN=(function(){
+  var m=[];
+  for(var i=0;i<SKP.length;i++){
+    var a=Math.max(0,i-1),b=Math.min(SKP.length-1,i+1),r=new Array(NP);
+    for(var j=0;j<NP;j++) r[j]=(SKP[b][j]-SKP[a][j])/(STK[b]-STK[a]);
+    m.push(r);
+  }
+  return m;
+})();
+function smoothParams(t){
+  t=Math.min(Math.max(t,0),SMOOTH_T);
+  var i=0;while(i<SKP.length-2&&t>STK[i+1])i++;
+  var h=STK[i+1]-STK[i],u=(t-STK[i])/h,u2=u*u,u3=u2*u;
+  var h00=2*u3-3*u2+1,h10=u3-2*u2+u,h01=-2*u3+3*u2,h11=u3-u2;
+  var r=new Array(NP);
+  for(var j=0;j<NP;j++) r[j]=h00*SKP[i][j]+h10*h*TAN[i][j]+h01*SKP[i+1][j]+h11*h*TAN[i+1][j];
+  // 下半身：着地まで滑らかに踏み出し、着地後は位置を固定（バウンドさせない）
+  if(t>=LAND_END){for(var q=0;q<LOWER.length;q++)r[LOWER[q]]=KP[2][LOWER[q]];}
+  else if(t>=LAND_T){
+    var lu=(t-LAND_T)/(LAND_END-LAND_T),le=lu*lu*(3-2*lu);
+    for(var z=0;z<LOWER.length;z++){var jj=LOWER[z];r[jj]=KP[1][jj]+(KP[2][jj]-KP[1][jj])*le;}
+  }
+  else{
+    var uu=t/LAND_T,e=uu*uu*(3-2*uu),lo=e<.5?lerpArr(KP[0],VIA0,e*2):lerpArr(VIA0,KP[1],e*2-1);
+    for(var w=0;w<LOWER.length;w++)r[LOWER[w]]=lo[LOWER[w]];
+  }
+  return r;
+}
+// リリース後のボール：リリース時の手の速度でそのまま飛ぶ
+var REL_POS=new V3(KP[3][6],KP[3][7],KP[3][8]);
+var REL_VEL=new V3(TAN[5][6],TAN[5][7],TAN[5][8]);
+
+/* ---------- 姿勢 → 骨格 ---------- */
+function ik(a,target,l1,l2,hint){
+  var v=target.clone().sub(a),d=v.length();
+  var dmax=l1+l2-1e-4;
+  if(d>dmax) d=dmax;
+  if(d<1e-3) d=1e-3;
+  var dir=v.lengthSq()>1e-8?v.clone().normalize():new V3(0,0,1);
+  var x=(l1*l1-l2*l2+d*d)/(2*d),h=Math.sqrt(Math.max(l1*l1-x*x,0));
+  var perp=hint.clone().sub(dir.clone().multiplyScalar(hint.dot(dir)));
+  if(perp.lengthSq()<1e-6) perp=new V3(0,1,0).sub(dir.clone().multiplyScalar(dir.y));
+  perp.normalize();
+  var mid=a.clone().add(dir.clone().multiplyScalar(x));
+  var elbow=mid.add(perp.multiplyScalar(h));
+  var end=a.clone().add(dir.clone().multiplyScalar(d));
+  return {mid:elbow,end:end,reach:v.length()-d};
+}
+function solve(p){
+  var P=new V3(p[0],p[1],p[2]);
+  var S=shoulderCenter([p[0],p[1],p[2]],p[5]);
+  var rs=S.clone().add(rotY(new V3(-.2,0,0),p[4])), ls=S.clone().add(rotY(new V3(.2,0,0),p[4]));
+  var rh=P.clone().add(rotY(new V3(-.1,0,0),p[3])), lh=P.clone().add(rotY(new V3(.1,0,0),p[3]));
+  var head=S.clone().add(new V3(0,Math.cos(p[5]*D2R),Math.sin(p[5]*D2R)).multiplyScalar(.27));
+  var ra=ik(rs,new V3(p[6],p[7],p[8]),UP,FORE,new V3(p[9],p[10],p[11]));
+  var la=ik(ls,new V3(p[12],p[13],p[14]),UP,FORE,new V3(.4,-1,.2));
+  var fk=ik(lh,new V3(p[15],p[16],p[17]),THIGH,SHIN,new V3(0,0,1));
+  var bk=ik(rh,new V3(p[18],p[19],p[20]),THIGH,SHIN,new V3(0,0,1));
+  return {P:P,S:S,rs:rs,ls:ls,rh:rh,lh:lh,head:head,
+    rEl:ra.mid,rHand:ra.end,lEl:la.mid,lHand:la.end,
+    lKnee:fk.mid,lFoot:fk.end,rKnee:bk.mid,rFoot:bk.end,reach:ra.reach};
+}
+
+/* ---------- three.js シーン ---------- */
+var stage=document.getElementById('stage');
+var renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+renderer.setClearColor(0x0d1426,1);
+stage.insertBefore(renderer.domElement,stage.firstChild);
+var scene=new THREE.Scene();
+scene.fog=new THREE.Fog(0x0d1426,6,14);
+var camera=new THREE.PerspectiveCamera(35,16/10,.1,50);
+scene.add(new THREE.AmbientLight(0xffffff,.65));
+var dl=new THREE.DirectionalLight(0xffffff,.75);dl.position.set(-2,4,3);scene.add(dl);
+var dl2=new THREE.DirectionalLight(0x88aaff,.3);dl2.position.set(3,2,-3);scene.add(dl2);
+
+var grid=new THREE.GridHelper(6,24,0x2a3a66,0x1a2444);grid.position.set(0,0,.6);scene.add(grid);
+var rubber=new THREE.Mesh(new THREE.BoxGeometry(.6,.02,.15),new THREE.MeshLambertMaterial({color:0xe5e7eb}));
+rubber.position.set(0,.01,-.1);scene.add(rubber);
+// 捕手方向の矢印
+(function(){
+  var m=new THREE.MeshBasicMaterial({color:0x3b4a7a});
+  var s=new THREE.Mesh(new THREE.BoxGeometry(.04,.005,.9),m);s.position.set(0,.006,1.5);scene.add(s);
+  var c=new THREE.Mesh(new THREE.ConeGeometry(.12,.25,16),m);c.rotation.x=Math.PI/2;c.position.set(0,.006,2.1);scene.add(c);
+})();
+
+var matBody=new THREE.MeshLambertMaterial({color:0xcbd5e1});
+var matTrunk=new THREE.MeshLambertMaterial({color:0xf1f5f9});
+var matArm=new THREE.MeshLambertMaterial({color:0xf6c90e});
+var matGlove=new THREE.MeshLambertMaterial({color:0x7aa2ff});
+var matShLine=new THREE.MeshLambertMaterial({color:0x38bdf8,emissive:0x0b3a52});
+var matHipLine=new THREE.MeshLambertMaterial({color:0xfb923c,emissive:0x5a2a08});
+var matJoint=new THREE.MeshLambertMaterial({color:0x94a3b8});
+var matBall=new THREE.MeshLambertMaterial({color:0xffffff,emissive:0x333333});
+
+var unitCyl=new THREE.CylinderGeometry(1,1,1,12);
+function bone(mat,r){var m=new THREE.Mesh(unitCyl,mat);m.userData.r=r;scene.add(m);return m;}
+function joint(mat,r){var m=new THREE.Mesh(new THREE.SphereGeometry(r,16,12),mat);scene.add(m);return m;}
+var Y=new V3(0,1,0);
+function setBone(m,a,b){
+  var d=b.clone().sub(a),len=d.length();
+  if(len<1e-5){m.visible=false;return;}
+  m.visible=true;
+  m.position.copy(a).add(b).multiplyScalar(.5);
+  m.scale.set(m.userData.r,len,m.userData.r);
+  m.quaternion.setFromUnitVectors(Y,d.normalize());
+}
+var B={
+  trunk:bone(matTrunk,.07),shoulder:bone(matShLine,.03),hips:bone(matHipLine,.03),
+  rUp:bone(matArm,.032),rFore:bone(matArm,.028),lUp:bone(matGlove,.032),lFore:bone(matGlove,.028),
+  lThigh:bone(matBody,.05),lShin:bone(matBody,.04),rThigh:bone(matBody,.05),rShin:bone(matBody,.04)
+};
+var J={
+  head:joint(matTrunk,.11),rs:joint(matArm,.05),ls:joint(matGlove,.05),rel:joint(matArm,.04),lel:joint(matGlove,.04),
+  rhand:joint(matArm,.04),lhand:joint(matGlove,.045),rk:joint(matJoint,.045),lk:joint(matJoint,.045),
+  rf:joint(matJoint,.04),lf:joint(matJoint,.04),pel:joint(matBody,.07)
+};
+function makeExt(color){
+  var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(12),3));
+  var l=new THREE.LineSegments(g,new THREE.LineDashedMaterial({color:color,dashSize:.07,gapSize:.05}));
+  l.frustumCulled=false;scene.add(l);return l;
+}
+function setExt(l,a,b,len){
+  var d=b.clone().sub(a).normalize().multiplyScalar(len),p=l.geometry.attributes.position;
+  p.setXYZ(0,a.x,a.y,a.z);p.setXYZ(1,a.x-d.x,a.y-d.y,a.z-d.z);
+  p.setXYZ(2,b.x,b.y,b.z);p.setXYZ(3,b.x+d.x,b.y+d.y,b.z+d.z);
+  p.needsUpdate=true;l.computeLineDistances();
+}
+var extSh=makeExt(0x38bdf8),extHip=makeExt(0xfb923c);
+var ball=new THREE.Mesh(new THREE.SphereGeometry(.05,20,16),matBall);scene.add(ball);
+
+// 4つの点のマーカー
+var markers=KP.slice(0,4).map(function(k){
+  var m=new THREE.Mesh(new THREE.SphereGeometry(.07,16,12),new THREE.MeshBasicMaterial({color:0xf6c90e,transparent:true,opacity:.28}));
+  m.position.set(k[6],k[7],k[8]);scene.add(m);return m;
+});
+
+// 軌跡
+var TRAIL_N=300;
+function makeLine(color,opacity){
+  var g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(TRAIL_N*3),3));
+  var l=new THREE.Line(g,new THREE.LineBasicMaterial({color:color,transparent:opacity<1,opacity:opacity}));
+  l.frustumCulled=false;scene.add(l);return l;
+}
+var lineFull=makeLine(0x6b7bb0,.55), lineLive=makeLine(0xf6c90e,1);
+var lineFollow=makeLine(0xfde68a,1);lineFollow.visible=false;
+var FN=60,followPts=[];
+
+/* ---------- 状態 ---------- */
+var state={mode:'robot',t:0,playing:true,speed:1,view:'free'};
+function dur(){return state.mode==='robot'?ROBOT_T:SMOOTH_T+.6;}  // スムーズはリリース後の余韻を含む
+function handAt(t){
+  if(state.mode==='robot'){var r=robotParams(t).p;return new V3(r[6],r[7],r[8]);}
+  var tt=Math.min(t,REL_T);
+  var p=smoothParams(tt);
+  var h=new V3(p[6],p[7],p[8]);
+  if(t>REL_T){var s=t-REL_T;h=REL_POS.clone().add(REL_VEL.clone().multiplyScalar(s));}
+  return h;
+}
+var trails={robot:[],smooth:[]};
+function buildTrails(){
+  ['robot','smooth'].forEach(function(m){
+    var save=state.mode;state.mode=m;
+    var T=dur(),arr=[];
+    for(var i=0;i<TRAIL_N;i++) arr.push(handAt(T*i/(TRAIL_N-1)));
+    trails[m]=arr;state.mode=save;
+  });
+}
+function buildFollow(){
+  followPts=[];
+  for(var i=0;i<FN;i++){var p=smoothParams(REL_T+(SMOOTH_T-REL_T)*i/(FN-1));followPts.push(new V3(p[6],p[7],p[8]));}
+}
+function applyTrail(){
+  var arr=trails[state.mode],pos=lineFull.geometry.attributes.position;
+  for(var i=0;i<TRAIL_N;i++){pos.setXYZ(i,arr[i].x,arr[i].y,arr[i].z);}
+  pos.needsUpdate=true;
+}
+
+function render(){
+  var T=dur(),info,p;
+  if(state.mode==='robot'){info=robotParams(state.t);p=info.p;}
+  else{p=smoothParams(Math.min(state.t,SMOOTH_T));}
+  var s=solve(p);
+  var pa=function(a){return a.clone();};
+  setBone(B.trunk,s.P,s.S);setBone(B.shoulder,s.ls,s.rs);setBone(B.hips,s.lh,s.rh);
+  setBone(B.rUp,s.rs,s.rEl);setBone(B.rFore,s.rEl,s.rHand);
+  setBone(B.lUp,s.ls,s.lEl);setBone(B.lFore,s.lEl,s.lHand);
+  setBone(B.lThigh,s.lh,s.lKnee);setBone(B.lShin,s.lKnee,s.lFoot);
+  setBone(B.rThigh,s.rh,s.rKnee);setBone(B.rShin,s.rKnee,s.rFoot);
+  J.head.position.copy(s.head);J.rs.position.copy(s.rs);J.ls.position.copy(s.ls);
+  J.rel.position.copy(s.rEl);J.lel.position.copy(s.lEl);J.rhand.position.copy(s.rHand);J.lhand.position.copy(s.lHand);
+  J.rk.position.copy(s.rKnee);J.lk.position.copy(s.lKnee);J.rf.position.copy(s.rFoot);J.lf.position.copy(s.lFoot);J.pel.position.copy(s.P);
+
+  setExt(extSh,s.ls,s.rs,1.6);setExt(extHip,s.lh,s.rh,1.6);
+
+  // ボール：リリースまでは手の中、スムーズはリリース後に飛んでいく
+  if(state.mode==='smooth'&&state.t>REL_T){ball.position.copy(handAt(state.t));J.rhand.visible=true;}
+  else ball.position.copy(s.rHand);
+
+  // 軌跡の描画範囲
+  var n=Math.max(2,Math.round(TRAIL_N*state.t/T));
+  var arr=trails[state.mode],pos=lineLive.geometry.attributes.position;
+  for(var i=0;i<TRAIL_N;i++){var a=arr[Math.min(i,n-1)];pos.setXYZ(i,a.x,a.y,a.z);}
+  pos.needsUpdate=true;
+
+  // フォロー（スムーズのみ）：リリース後の手が描く弧
+  var showF=state.mode==='smooth'&&state.t>REL_T;
+  lineFollow.visible=showF;
+  if(showF){
+    var fr=Math.min(1,(state.t-REL_T)/(SMOOTH_T-REL_T)),cnt=Math.max(2,Math.round(FN*fr)),fp=lineFollow.geometry.attributes.position;
+    for(var q=0;q<cnt;q++){fp.setXYZ(q,followPts[q].x,followPts[q].y,followPts[q].z);}
+    fp.needsUpdate=true;lineFollow.geometry.setDrawRange(0,cnt);
+  }
+
+  // どの点か
+  var active=-1;
+  if(state.mode==='robot'){active=info.holding?info.phase:-1;}
+  else{for(var k=0;k<4;k++){if(Math.abs(state.t-TK[k])<.18)active=k;}}
+  updateUI(active);
+}
+
+/* ---------- UI ---------- */
+var tags=[],cards=document.querySelectorAll('.card');
+for(var i=0;i<4;i++){var d=document.createElement('div');d.className='tag';d.textContent=i+1;stage.appendChild(d);tags.push(d);}
+var names=['① グラブ','② ボトム','③ 後頭部付近','④ リリース位置'];
+var modeLabel=document.getElementById('modeLabel'),phaseLabel=document.getElementById('phaseLabel');
+var scrub=document.getElementById('scrub');
+function updateUI(active){
+  modeLabel.innerHTML=state.mode==='robot'?'<b>ロボット</b>：1点ずつ止まる':'<b>スムーズ</b>：止まらず通過';
+  phaseLabel.textContent=active>=0?names[active]:(state.mode==='smooth'&&state.t>REL_T?'リリース後も止まらない':'移動中');
+  for(var i=0;i<4;i++){tags[i].classList.toggle('on',i===active);cards[i].classList.toggle('on',i===active);}
+  if(!scrubbing) scrub.value=Math.round(1000*state.t/dur());
+  var w=stage.clientWidth,h=stage.clientHeight;
+  for(var j=0;j<4;j++){
+    var v=markers[j].position.clone().project(camera);
+    var vis=v.z<1;
+    tags[j].style.display=vis?'flex':'none';
+    tags[j].style.left=((v.x*.5+.5)*w)+'px';
+    tags[j].style.top=((-v.y*.5+.5)*h)+'px';
+  }
+}
+
+/* ---------- カメラ（ドラッグ回転・ホイール拡大） ---------- */
+var cam={az:-55,el:14,dist:4.2,target:new V3(0,1.05,.5)};
+var VIEWS={side:[-90,6],front:[0,6],back:[180,6],top:[-90,85],free:[-55,14]};
+function placeCamera(){
+  var az=cam.az*D2R,el=Math.max(-5,Math.min(88,cam.el))*D2R;
+  camera.position.set(cam.target.x+cam.dist*Math.sin(az)*Math.cos(el),cam.target.y+cam.dist*Math.sin(el),cam.target.z+cam.dist*Math.cos(az)*Math.cos(el));
+  camera.up.set(0,1,0);
+  if(cam.el>80) camera.up.set(0,0,1);
+  camera.lookAt(cam.target);
+}
+var ptrs={},lastPinch=0;
+var el=renderer.domElement;
+el.addEventListener('pointerdown',function(e){el.setPointerCapture(e.pointerId);ptrs[e.pointerId]=[e.clientX,e.clientY];setView('free',true);});
+el.addEventListener('pointermove',function(e){
+  var p=ptrs[e.pointerId];if(!p)return;
+  var ids=Object.keys(ptrs);
+  if(ids.length===1){cam.az-=(e.clientX-p[0])*.4;cam.el+=(e.clientY-p[1])*.3;cam.el=Math.max(-5,Math.min(88,cam.el));}
+  else if(ids.length===2){
+    var o=ids.filter(function(i){return +i!==e.pointerId;})[0],q=ptrs[o];
+    var d0=Math.hypot(p[0]-q[0],p[1]-q[1]),d1=Math.hypot(e.clientX-q[0],e.clientY-q[1]);
+    if(d0>0) cam.dist=Math.max(2.2,Math.min(9,cam.dist*d0/d1));
+  }
+  ptrs[e.pointerId]=[e.clientX,e.clientY];
+});
+function up(e){delete ptrs[e.pointerId];}
+el.addEventListener('pointerup',up);el.addEventListener('pointercancel',up);
+el.addEventListener('wheel',function(e){e.preventDefault();cam.dist=Math.max(2.2,Math.min(9,cam.dist*(1+e.deltaY*.001)));},{passive:false});
+
+function setSeg(id,attr,val){[].forEach.call(document.querySelectorAll('#'+id+' button'),function(b){b.classList.toggle('on',b.getAttribute(attr)===String(val));});}
+function setView(v,fromDrag){
+  state.view=v;setSeg('viewSeg','data-v',v);
+  if(!fromDrag&&VIEWS[v]){cam.az=VIEWS[v][0];cam.el=VIEWS[v][1];}
+}
+document.getElementById('viewSeg').addEventListener('click',function(e){var v=e.target.getAttribute('data-v');if(v)setView(v);});
+document.getElementById('modeSeg').addEventListener('click',function(e){
+  var m=e.target.getAttribute('data-m');if(!m)return;
+  state.mode=m;state.t=0;state.playing=true;playBtn.textContent='一時停止';setSeg('modeSeg','data-m',m);applyTrail();
+});
+document.getElementById('speedSeg').addEventListener('click',function(e){
+  var s=e.target.getAttribute('data-s');if(!s)return;state.speed=+s;setSeg('speedSeg','data-s',s);
+});
+var playBtn=document.getElementById('play');
+playBtn.addEventListener('click',function(){
+  if(!state.playing&&state.t>=dur()-1e-3) state.t=0;
+  state.playing=!state.playing;playBtn.textContent=state.playing?'一時停止':'再生';
+});
+var scrubbing=false;
+scrub.addEventListener('input',function(){scrubbing=true;state.t=dur()*scrub.value/1000;state.playing=false;playBtn.textContent='再生';});
+scrub.addEventListener('change',function(){scrubbing=false;});
+[].forEach.call(cards,function(c){c.style.cursor='pointer';c.addEventListener('click',function(){
+  var i=+c.getAttribute('data-i');
+  state.t=state.mode==='robot'?i*(H+M)+H*.5:TK[i];
+  state.playing=false;playBtn.textContent='再生';
+});});
+
+function resize(){
+  var w=stage.clientWidth,h=stage.clientHeight;
+  renderer.setSize(w,h,false);camera.aspect=w/h;
+  cam.dist0=cam.dist;camera.updateProjectionMatrix();
+}
+window.addEventListener('resize',resize);
+
+var last=performance.now(),pauseEnd=0;
+function loop(now){
+  var dt=Math.min((now-last)/1000,.05);last=now;
+  if(state.playing){
+    var T=dur();
+    state.t+=dt*state.speed;
+    if(state.t>=T){
+      state.t=T;
+      // 終点で少し止めてから頭に戻る
+      pauseEnd+=dt;
+      if(pauseEnd>1.0){state.t=0;pauseEnd=0;}
+    } else pauseEnd=0;
+  }
+  placeCamera();render();
+  renderer.render(scene,camera);
+  requestAnimationFrame(loop);
+}
+
+buildTrails();buildFollow();applyTrail();resize();
+if(window.matchMedia&&window.matchMedia('(max-width:720px)').matches) cam.dist=5.4;
+requestAnimationFrame(loop);
+
+// 動作確認用（腕が届いているか）
+window.__check=function(){
+  var worst=0;
+  for(var i=0;i<=200;i++){
+    var t=SMOOTH_T*i/200,s=solve(smoothParams(t));worst=Math.max(worst,s.reach);
+  }
+  var keys=SKP.map(function(k){return solve(k).reach;});
+  var base=solve(smoothParams(LAND_END)),dev=0;
+  for(var i=0;i<=200;i++){
+    var t=LAND_END+(SMOOTH_T-LAND_END)*i/200,q=solve(smoothParams(t));
+    ['lh','rh','lKnee','rKnee','lFoot','rFoot','P'].forEach(function(k){dev=Math.max(dev,q[k].distanceTo(base[k]));});
+  }
+  return {worstSmooth:worst,keys:keys,lowerDevAfterLanding:dev};
+};
+})();
+</script>
+</body>
+</html>
